@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, Clock, AlertCircle, Check, X } from 'lucide-react';
+import { DollarSign, Clock, AlertCircle, Check, X } from 'lucide-react';
 import './index.css';
 
 function App() {
@@ -47,7 +47,7 @@ function App() {
     }, 10000);
 
     return () => clearInterval(intervalId);
-  }, [matchNumber]);
+  }, [matchNumber, fetchOdds]);
 
   useEffect(() => {
     if (notification.show) {
@@ -180,7 +180,7 @@ function App() {
 
   useEffect(() => {
     setTotalBet(calculateCombinedTotalBet());
-  }, [bets]);
+  }, [bets, calculateCombinedTotalBet]);
 
   const getColorBasedOnOdds = (odd) => {
     if (odd < 2) return 'bg-blue-100 border-blue-300';
