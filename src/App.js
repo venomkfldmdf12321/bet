@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, Clock, AlertCircle, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Clock, AlertCircle, Check, X } from 'lucide-react';
 import './index.css';
 
 function App() {
-  const [odds, setOdds] = useState([]);
   const [bets, setBets] = useState([]);
+  const [budgetInput, setBudgetInput] = useState(100000);
   const [budget, setBudget] = useState(100000);
+  const [availableBudget, setAvailableBudget] = useState(100000);
   const [totalBet, setTotalBet] = useState(0);
   const [matchNumber, setMatchNumber] = useState(0);
   const [liveOdds, setLiveOdds] = useState([]);
@@ -18,7 +19,7 @@ function App() {
   const [stakeError, setStakeError] = useState('');
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
 
-  const simulatedOdds = [
+  const simulatedOdds = useMemo(() => [
     ['2.40', '15.00', '1.60'],
     ['3.25', '17.00', '1.35'],
     ['4.75', '19.00', '1.20'],
@@ -37,28 +38,9 @@ function App() {
     ['1.95', '8.00', '2.10'],
     ['10.00', '1.01'],
     ['3.00', '1.30'],
-  ];
+  ], []);
 
-  useEffect(() => {
-    fetchOdds();
-    const intervalId = setInterval(() => {
-      setMatchNumber((prev) => prev + 1);
-      fetchOdds();
-    }, 10000);
-
-    return () => clearInterval(intervalId);
-  }, [matchNumber]);
-
-  useEffect(() => {
-    if (notification.show) {
-      const timer = setTimeout(() => {
-        setNotification({ show: false, message: '', type: '' });
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
-
-  const fetchOdds = () => {
+  const fetchOdds = useCallback(() => {
     if (matchNumber < simulatedOdds.length) {
       const oddsForCurrentMatch = simulatedOdds[matchNumber];
       let formattedOdds = [];
@@ -76,7 +58,31 @@ function App() {
       setLiveOdds([]);
       console.log(`No more simulated matches available after match number ${simulatedOdds.length}`);
     }
-  };
+  }, [matchNumber, simulatedOdds]);
+
+  useEffect(() => {
+    fetchOdds();
+    const intervalId = setInterval(() => {
+      setMatchNumber((prev) => prev + 1);
+      fetchOdds();
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [matchNumber, fetchOdds]);
+
+  useEffect(() => {
+    if (notification.show) {
+      const timer = setTimeout(() => {
+        setNotification({ show: false, message: '', type: '' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
+
+  useEffect(() => {
+    setAvailableBudget(budget - totalBet);
+  }, [budget, totalBet]);
+
 
   const handleOpenModal = (team, odd, matchIndex) => {
     setModalTeam(team);
@@ -95,7 +101,7 @@ function App() {
   const handleStakeChange = (event) => {
     const stake = event.target.value;
     setModalStake(stake);
-    setStakeError(''); // Clear any previous error
+    setStakeError('');
     if (!isNaN(stake) && stake !== '') {
       setPotentialReturn(parseFloat(stake) * modalOdd);
     } else {
@@ -111,8 +117,8 @@ function App() {
       return;
     }
 
-    if (numericStake > budget) {
-      setStakeError('Insufficient budget to place this bet.');
+    if (numericStake > availableBudget) {
+      setStakeError('Insufficient available budget to place this bet.');
       return;
     }
 
@@ -122,12 +128,9 @@ function App() {
         (bet) => bet.team === modalTeam && bet.matchIndex === modalMatchIndex
       );
 
-      let updatedBudget = budget;
-
       if (existingBetIndex !== -1) {
         const removedBetAmount = newBets[existingBetIndex].amount;
         newBets.splice(existingBetIndex, 1);
-        updatedBudget = budget + removedBetAmount;
         setNotification({
           show: true,
           message: `Bet removed for ${modalTeam} - ₹${removedBetAmount} returned`,
@@ -135,7 +138,6 @@ function App() {
         });
       } else {
         newBets.push({ team: modalTeam, odd: modalOdd, amount: numericStake, matchIndex: modalMatchIndex });
-        updatedBudget = budget - numericStake;
         setNotification({
           show: true,
           message: `Bet placed on ${modalTeam} - ₹${numericStake}`,
@@ -143,7 +145,6 @@ function App() {
         });
       }
 
-      setBudget(updatedBudget);
       return newBets;
     });
 
@@ -161,26 +162,27 @@ function App() {
     return totalBetForTeam * odd;
   };
 
-  const calculateCombinedTotalBet = () => {
+  const calculateCombinedTotalBet = useCallback(() => {
     return bets.reduce((total, bet) => total + bet.amount, 0);
+  }, [bets]);
+
+  const calculatePotentialReturnsSummary = () => {
+    const teamReturns = {};
+    bets.forEach(bet => {
+      const profit = bet.amount * (bet.odd - 1);
+      if (!teamReturns[bet.team]) {
+        teamReturns[bet.team] = { totalProfit: 0, bets: [] };
+      }
+      teamReturns[bet.team].totalProfit += profit;
+      teamReturns[bet.team].bets.push({ odd: bet.odd, amount: bet.amount, profit: profit });
+    });
+    return teamReturns;
   };
 
-  const calculateAllPotentialReturns = () => {
-    const teamPotentialReturns = {};
-    bets.forEach(bet => {
-      const potentialReturn = bet.amount * bet.odd;
-      if (teamPotentialReturns[bet.team]) {
-        teamPotentialReturns[bet.team] += potentialReturn;
-      } else {
-        teamPotentialReturns[bet.team] = potentialReturn;
-      }
-    });
-    return teamPotentialReturns;
-  };
 
   useEffect(() => {
     setTotalBet(calculateCombinedTotalBet());
-  }, [bets]);
+  }, [bets, calculateCombinedTotalBet]);
 
   const getColorBasedOnOdds = (odd) => {
     if (odd < 2) return 'bg-blue-100 border-blue-300';
@@ -197,21 +199,40 @@ function App() {
     }).format(value);
   };
 
+  const handleBudgetInputChange = (event) => {
+    setBudgetInput(event.target.value);
+  };
+
+  const handleBudgetSubmit = () => {
+    const newBudget = parseFloat(budgetInput);
+    if (!isNaN(newBudget) && newBudget >= 0) {
+      setBudget(newBudget);
+      setNotification({ show: true, message: `Budget updated to ${formatCurrency(newBudget)}`, type: 'success' });
+    } else {
+      setNotification({ show: true, message: 'Invalid budget input', type: 'error' });
+      setBudgetInput(budget);
+    }
+  };
+
+
+  const returnsSummary = calculatePotentialReturnsSummary();
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {notification.show && (
         <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-2 ${
-          notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-300' : 
-          notification.type === 'info' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 
+          notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-300' :
+          notification.type === 'info' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
           'bg-red-100 text-red-800 border border-red-300'
         }`}>
-          {notification.type === 'success' ? <Check size={18} /> : 
-           notification.type === 'info' ? <AlertCircle size={18} /> : 
+          {notification.type === 'success' ? <Check size={18} /> :
+           notification.type === 'info' ? <AlertCircle size={18} /> :
            <X size={18} />}
           <span>{notification.message}</span>
         </div>
       )}
-      
+
       <div className="container mx-auto p-4 max-w-6xl">
         <header className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <div className="flex flex-col md:flex-row md:justify-between md:items-center">
@@ -220,14 +241,34 @@ function App() {
               <p className="text-gray-500 mt-1">Real-time odds and intelligent bet tracking</p>
             </div>
             <div className="mt-4 md:mt-0 flex flex-col md:items-end">
-              <div className="flex items-center text-lg">
+              <div className="flex items-center mb-2">
+                <label htmlFor="budgetInput" className="mr-2 font-semibold text-gray-700">Set Budget:</label>
+                <div className="flex rounded-md shadow-sm">
+                  <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm">
+                    ₹
+                  </span>
+                  <input
+                    type="number"
+                    id="budgetInput"
+                    className="border-gray-300 border p-2 focus:ring-indigo-500 focus:border-indigo-500 block w-full min-w-[80px] sm:min-w-[120px] rounded-r-md sm:text-sm"
+                    placeholder="Enter budget"
+                    value={budgetInput}
+                    onChange={handleBudgetInputChange}
+                  />
+                </div>
+                <button
+                  onClick={handleBudgetSubmit}
+                  className="ml-2 px-4 py-2 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Update
+                </button>
+              </div>
+
+
+              {/* <div className="flex items-center text-lg">
                 <DollarSign className="text-emerald-500 mr-2" size={24} />
                 <span className="font-semibold text-gray-700">Available Budget:</span>
-                <span className="ml-2 text-xl font-bold text-emerald-600">{formatCurrency(budget)}</span>
-              </div>
-              {/* <div className="flex items-center text-sm mt-1 text-gray-500">
-                <TrendingUp className="mr-1" size={16} />
-                <span>Total Bet: {formatCurrency(totalBet)}</span>
+                <span className="ml-2 text-xl font-bold text-emerald-600">{formatCurrency(availableBudget)}</span>
               </div> */}
             </div>
           </div>
@@ -241,12 +282,9 @@ function App() {
                 {liveOdds.length > 0 ? (
                   `Odd #${matchNumber + 1} - ${liveOdds.map(item => item.odd.toFixed(2)).join(' / ')}`
                 ) : (
-                  `Odd #${matchNumber + 1} - Live Odds` // Fallback text when no odds
+                  `Odd #${matchNumber + 1} - Live Odds`
                 )}
               </h3>            </div>
-            {/* <div className="text-xs bg-indigo-800 px-3 py-1 rounded-full">
-              Refreshes in <span className="font-medium">10s</span>
-            </div> */}
           </div>
 
           <div className="p-4">
@@ -255,10 +293,10 @@ function App() {
                 {liveOdds.map(({ team, odd }, index) => {
                   const hasBet = calculateTotalBetForTeamAndMatch(team, matchNumber) > 0;
                   const colorClass = getColorBasedOnOdds(odd);
-                  
+
                   return (
-                    <div 
-                      key={`${team}-${matchNumber}`} 
+                    <div
+                      key={`${team}-${matchNumber}`}
                       className={`rounded-lg border-2 ${hasBet ? 'border-indigo-500 shadow-md' : 'border-gray-200'} overflow-hidden`}
                     >
                       <div className={`p-4 ${hasBet ? 'bg-indigo-50' : 'bg-white'}`}>
@@ -268,7 +306,7 @@ function App() {
                             {odd.toFixed(2)}
                           </div>
                         </div>
-                        
+
                         <div className="space-y-2 text-gray-600 text-sm mb-4">
                           <div className="flex justify-between">
                             <span>Current Bet:</span>
@@ -279,15 +317,15 @@ function App() {
                             <span className="font-medium text-indigo-600">{formatCurrency(calculatePotentialReturnForDisplay(team, odd, matchNumber))}</span>
                           </div>
                         </div>
-                        
+
                         <button
                           className={`w-full py-2 px-4 rounded-md transition-colors font-medium ${
-                            hasBet 
-                              ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-300' 
+                            hasBet
+                              ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-300'
                               : 'bg-indigo-600 text-white hover:bg-indigo-700'
                           } disabled:opacity-50 disabled:cursor-not-allowed`}
                           onClick={() => handleOpenModal(team, odd, matchNumber)}
-                          disabled={budget <= 0}
+                          disabled={availableBudget <= 0 && !hasBet}
                         >
                           {hasBet ? 'Remove Bet' : 'Place Bet'}
                         </button>
@@ -307,33 +345,54 @@ function App() {
 
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h3 className="text-xl font-bold text-gray-800 mb-4">Bet Summary</h3>
-          
+
           <div className="flex flex-col md:flex-row gap-6">
             <div className="md:w-1/2">
               <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
-                <h4 className="font-semibold text-indigo-800 mb-2">Total Bets Placed</h4>
-                <p className="text-2xl font-bold text-indigo-700">{formatCurrency(totalBet)}</p>
-                
-                <div className="mt-2 h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-indigo-600 rounded-full" 
-                    style={{ width: `${Math.min(100, (totalBet / budget) * 100)}%` }}
-                  ></div>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {((totalBet / 100000) * 100).toFixed(1)}% of budget used
-                </p>
+                <h4 className="font-semibold text-indigo-800 mb-2">Total Budget</h4>
+                <p className="text-2xl font-bold text-indigo-700">{formatCurrency(budget)}</p>
               </div>
+              <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100 mt-4">
+                <h4 className="font-semibold text-emerald-800 mb-2">Total Bets Placed</h4>
+                <p className="text-2xl font-bold text-emerald-700">{formatCurrency(totalBet)}</p>
+              </div>
+              <div className="bg-red-50 rounded-lg p-4 border border-red-100 mt-4">
+                <h4 className="font-semibold text-red-800 mb-2">Available Budget</h4>
+                <p className="text-2xl font-bold text-red-700">{formatCurrency(availableBudget)}</p>
+              </div>
+              {/* <div className="flex items-center text-lg">
+                <DollarSign className="text-emerald-500 mr-2" size={24} />
+                <span className="font-semibold text-gray-700">Available Budget:</span>
+                <span className="ml-2 text-xl font-bold text-emerald-600">{formatCurrency(availableBudget)}</span>
+              </div> */}
             </div>
-            
+
             <div className="md:w-1/2">
-              <h4 className="font-semibold text-gray-700 mb-2">Potential Returns</h4>
-              {Object.entries(calculateAllPotentialReturns()).length > 0 ? (
+              <h4 className="font-semibold text-gray-700 mb-2">Potential Return</h4>
+              {Object.entries(returnsSummary).length > 0 ? (
                 <div className="space-y-3">
-                  {Object.entries(calculateAllPotentialReturns()).map(([team, potentialReturn]) => (
-                    <div key={team} className="flex justify-between items-center p-2 border-b border-gray-100">
-                      <span className="font-medium text-gray-700">{team}</span>
-                      <span className="text-emerald-600 font-bold">{formatCurrency(potentialReturn)}</span>
+                  {Object.entries(returnsSummary).map(([teamName, data]) => (
+                    <div key={teamName} className="p-2 mb-4 border border-gray-200 rounded-md">
+                      <div className="font-semibold text-gray-700 mb-2">{teamName}</div>
+                      {data.bets.map((bet, index) => (
+                        <div key={`${teamName}-bet-${index}`} className="flex justify-between items-center text-sm py-1 border-b border-gray-100 last:border-b-0">
+                          <div>
+                            <span className="text-gray-500">Odd: {bet.odd.toFixed(2)}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 mr-2">Bet: {formatCurrency(bet.amount)}</span>
+                            <span className={`font-bold ${bet.profit > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {formatCurrency(bet.profit)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="font-semibold text-gray-700">Total Potential Return:</span>
+                        <span className={`font-bold ${data.totalProfit > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {formatCurrency(data.totalProfit)}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -351,14 +410,14 @@ function App() {
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
             <div className="bg-indigo-600 text-white p-4">
               <h3 className="text-lg font-semibold">
-                {calculateTotalBetForTeamAndMatch(modalTeam, modalMatchIndex) > 0 
-                  ? `Update Bet on ${modalTeam}` 
+                {calculateTotalBetForTeamAndMatch(modalTeam, modalMatchIndex) > 0
+                  ? `Update Bet on ${modalTeam}`
                   : `Odd is ${modalOdd.toFixed(2)}`}
               </h3>
             </div>
-            
+
             <div className="p-6">
-              
+
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Enter your stake amount
@@ -380,7 +439,7 @@ function App() {
                   </p>
                 )}
               </div>
-              
+
               {modalStake && !stakeError && (
                 <div className="mt-4 mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
                   <div className="flex justify-between text-sm text-gray-600 mb-1">
@@ -393,14 +452,15 @@ function App() {
                   </div>
                 </div>
               )}
-              
+
               <div className="flex space-x-3">
                 <button
                   className="flex-1 py-3 px-4 bg-indigo-600 text-white font-medium rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                   onClick={handlePlaceBet}
+                  disabled={availableBudget < parseFloat(modalStake) && !(calculateTotalBetForTeamAndMatch(modalTeam, modalMatchIndex) > 0)}
                 >
-                  {calculateTotalBetForTeamAndMatch(modalTeam, modalMatchIndex) > 0 
-                    ? 'Update Bet' 
+                  {calculateTotalBetForTeamAndMatch(modalTeam, modalMatchIndex) > 0
+                    ? 'Update Bet'
                     : 'Place Bet'}
                 </button>
                 <button
