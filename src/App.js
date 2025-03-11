@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Clock, AlertCircle, Check, X } from 'lucide-react';
+import { DollarSign, Clock, AlertCircle, Check, X } from 'lucide-react';
 import './index.css';
 
 function App() {
+  // const [odds, setOdds] = useState([]);
   const [bets, setBets] = useState([]);
   const [budgetInput, setBudgetInput] = useState(100000);
   const [budget, setBudget] = useState(100000);
@@ -349,8 +350,18 @@ function App() {
           <div className="flex flex-col md:flex-row gap-6">
             <div className="md:w-1/2">
               <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
-                <h4 className="font-semibold text-indigo-800 mb-2">Total Budget</h4>
-                <p className="text-2xl font-bold text-indigo-700">{formatCurrency(budget)}</p>
+                <h4 className="font-semibold text-indigo-800 mb-2">Total Bets Placed</h4>
+                <p className="text-2xl font-bold text-indigo-700">{formatCurrency(totalBet)}</p>
+
+                <div className="mt-2 h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-600 rounded-full"
+                    style={{ width: `${Math.min(100, (totalBet / budget) * 100)}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {((totalBet / 100000) * 100).toFixed(1)}% of budget used
+                </p>
               </div>
               <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100 mt-4">
                 <h4 className="font-semibold text-emerald-800 mb-2">Total Bets Placed</h4>
